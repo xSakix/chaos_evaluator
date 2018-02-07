@@ -9,6 +9,8 @@ import seaborn as sns
 
 sys.path.insert(0, '../etf_data')
 from etf_data_loader import load_all_data_from_file
+sys.path.insert(0, '../buy_hold_simulator')
+from result_loader import load_ranked
 
 
 
@@ -56,9 +58,15 @@ def compute_one_etf(etf):
     #
     # plt.show()
     return sim.investor
+
+data = load_ranked()
+
+top = data.ticket[0]
+print(top)
+
 investors = []
 while len(investors) < 20:
-    investor = compute_one_etf(['SPY'])
+    investor = compute_one_etf([top])
     if investor.cash == investor.invested:
         continue
     investors.append(investor)
@@ -68,6 +76,11 @@ means = []
 for investor in investors:
     means.append(investor.m)
 
+
+print('original:'+str(data.mean[0]))
+print('observed:'+str(np.mean(means)))
+
 #plt.plot(means)
 sns.kdeplot(means)
 plt.show()
+
