@@ -61,8 +61,10 @@ def compute_one_etf(etf):
 
 data = load_ranked()
 
-top = data.ticket[0]
-print(top)
+top = data['ticket'].iloc[0]
+print(data.iloc[0].ticket)
+original_mean = data.iloc[0]['mean']
+print('original:%f'%original_mean)
 
 investors = []
 while len(investors) < 20:
@@ -77,7 +79,6 @@ for investor in investors:
     means.append(investor.m)
 
 
-print('original:'+str(data.mean[0]))
 print('observed:'+str(np.mean(means)))
 
 #plt.plot(means)
