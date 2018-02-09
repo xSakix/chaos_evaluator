@@ -15,7 +15,6 @@ class ChaosSim:
         self.investor = Investor(ticket,dist)
         self.tr_cost = tr_cost
         self.r = np.random.uniform(2.9, 3.9,2)
-        print(self.r)
 
     def invest(self, data):
 

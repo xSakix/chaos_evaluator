@@ -9,9 +9,12 @@ import seaborn as sns
 
 sys.path.insert(0, '../etf_data')
 from etf_data_loader import load_all_data_from_file
+
 sys.path.insert(0, '../buy_hold_simulator')
 from result_loader import load_ranked
 
+from scipy.stats import binom
+import pymc3 as pm
 
 
 def rolling_mean(data, period):
@@ -36,7 +39,6 @@ def compute_one_etf(etf):
     sim.invest(df_adj_close[etf])
     sim.investor.compute_means()
 
-
     # _, ax = plt.subplots(3, 1)
     # for rms in sim.investor.rms_list:
     #     ax[2].plot(rms)
@@ -59,29 +61,60 @@ def compute_one_etf(etf):
     # plt.show()
     return sim.investor
 
+
+np.warnings.filterwarnings('ignore')
+
 data = load_ranked()
 
-top = data['ticket'].iloc[0]
-print(data.iloc[0].ticket)
-original_mean = data.iloc[0]['mean']
-print('original:%f'%original_mean)
+MAX_ETFS = 1
+MAX_RUNS = 100
 
-investors = []
-while len(investors) < 20:
-    investor = compute_one_etf([top])
-    if investor.cash == investor.invested:
-        continue
-    investors.append(investor)
-    print(len(investors))
+for i in range(0, MAX_ETFS):
+    top = data['ticket'].iloc[i]
+    print(top)
 
-means = []
-for investor in investors:
-    means.append(investor.m)
+    investors = []
+    while len(investors) < MAX_RUNS:
+        investor = compute_one_etf([top])
+        if investor.cash == investor.invested:
+            continue
+        investors.append(investor)
+        # print('%d:%f:%f' % (len(investors), investor.history[-1],investor.m))
 
+    means = []
+    for investor in investors:
+        means.append(investor.m)
 
-print('observed:'+str(np.mean(means)))
+    original_mean = data.iloc[i]['mean']
+    original_std = data.iloc[i]['std']
+    print('original:%f +/- %f' % (original_mean, original_std))
+    print('observed:%f +/- %f' % (np.mean(means), np.std(means)))
 
-#plt.plot(means)
-sns.kdeplot(means)
-plt.show()
+    priors = []
+    means = np.array(means)
+    for i in range(1, len(means) + 1):
+        means_sub = means[:i]
+        result = np.abs(means_sub - original_mean)
+        prior = np.count_nonzero(result < 0.05) / len(means_sub)
+        priors.append(prior)
 
+    print('validity:' + str(priors[-1]))
+
+    grid = np.linspace(0., 1., MAX_RUNS)
+    likehood = binom.pmf(np.count_nonzero(result < 0.05), len(means), grid)
+    posterior = likehood * np.array(priors)
+    posterior = posterior / posterior.sum()
+
+    samples = np.random.choice(grid, p=posterior, size=int(1e4), replace=True)
+    print('maximum posteriori at prob =(%f,%f)' % (max(posterior), grid[posterior == max(posterior)]))
+    print('high posterior density percentile interval 95:' + str(pm.hpd(samples, alpha=0.95)))
+
+    # _, (ax0, ax1, ax2) = plt.subplots(1, 3)
+    # ax0.plot(grid, posterior)
+    # ax1.plot(samples, 'o')
+    # sns.kdeplot(samples, ax=ax2)
+    # plt.show()
+
+    # plt.plot(means)
+    # sns.kdeplot(means)
+    # plt.show()
