@@ -16,6 +16,8 @@ import bah_simulator as bah
 from scipy.stats import binom, norm
 import pymc3 as pm
 
+from md2pdf.doc import Document
+
 # -----
 
 prefix = 'lse_'
@@ -119,8 +121,8 @@ np.warnings.filterwarnings('ignore')
 data = load_ranked(prefix)
 
 MIN_ETFS = 0
-MAX_ETFS = 1
-MAX_RUNS = 10
+MAX_ETFS = 5
+MAX_RUNS = 100
 
 for i in range(MIN_ETFS, MAX_ETFS):
     top = data['ticket'].iloc[i]
@@ -133,12 +135,12 @@ for i in range(MIN_ETFS, MAX_ETFS):
         os.remove(result_md)
     with open(result_md, 'a+') as fd:
         fd.write('# ' + top + '\n')
-        fd.write('## BUY & HOLD results\n')
-        fd.write('* Invested:' + str(investor.invested_history[-1]) + '\n')
-        fd.write('* Value gained:' + str(investor.history[-1]) + '\n')
-        fd.write('* Overall returns:' + str(investor.ror_history[-1]) + '\n')
-        fd.write('* Mean returns:' + str(investor.m) + '\n')
-        fd.write('* Std of returns:' + str(investor.std) + '\n')
+        fd.write('## 1. BUY & HOLD results\n')
+        fd.write('* Invested: ' + str(np.round(investor.invested_history[-1], 2)) + '\n')
+        fd.write('* Value gained: ' + str(np.round(investor.history[-1], 2)) + '\n')
+        fd.write('* Overall returns :' + str(np.round(investor.ror_history[-1], 2)) + '\n')
+        fd.write('* Mean returns: ' + str(np.round(investor.m, 2)) + '\n')
+        fd.write('* Std of returns(volatility): ' + str(np.round(investor.std, 4)) + '\n')
         fd.write('![alt text](bah_' + top + '.png)' + '\n')
         fd.write('![alt text](returns_' + top + '.png)' + '\n')
         fd.write('![alt text](ma_' + top + '.png)' + '\n')
@@ -171,8 +173,8 @@ for i in range(MIN_ETFS, MAX_ETFS):
         priors.append(prior)
 
     with open(result_md, 'a+') as fd:
-        fd.write('## Chaos simulation results using Bayesian analysis' + '\n')
-        fd.write('* Validity:' + str(priors[-1]) + '\n')
+        fd.write('## 2. Chaos simulation results using Bayesian analysis' + '\n')
+        fd.write('* Validity: ' + str(priors[-1] * 100.) + '% \n')
 
     grid = np.linspace(0., 1., MAX_RUNS)
     likehood = binom.pmf(np.count_nonzero(result < 0.05), len(means), grid)
@@ -181,24 +183,28 @@ for i in range(MIN_ETFS, MAX_ETFS):
 
     samples = np.random.choice(grid, p=posterior, size=int(1e4), replace=True)
     with open(result_md, 'a+') as fd:
-        fd.write('* Maximum posteriori at prob =(%f,%f)' % (max(posterior), grid[posterior == max(posterior)]) + '\n')
-        fd.write('* Migh posterior density percentile interval 95:' + str(pm.hpd(samples, alpha=0.95)) + '\n')
+        fd.write('* Maximum posteriori at prob = (%f,%f)' % (
+        np.round(max(posterior), 2), np.round(grid[posterior == max(posterior)], 2)) + '\n')
+        fd.write(
+            '* Migh posterior density percentile interval 95: ' + str(np.round(pm.hpd(samples, alpha=0.95), 2)) + '\n')
 
-    print('maximum posteriori at prob =(%f,%f)' % (max(posterior), grid[posterior == max(posterior)]))
-    print('high posterior density percentile interval 95:' + str(pm.hpd(samples, alpha=0.95)))
+    print('maximum posteriori at prob =(%.2f,%.2f)' % (max(posterior), grid[posterior == max(posterior)]))
+    print('high posterior density percentile interval 95: ' + str(pm.hpd(samples, alpha=0.95)))
 
-    _, (ax0, ax1, ax2) = plt.subplots(1, 3)
-    ax0.plot(grid, posterior)
-    ax0.set_title('probability distribution of mean returns')
-    ax1.plot(samples, 'o')
-    ax1.set_title('samples of mean returns')
-    sns.kdeplot(samples, ax=ax2)
-    ax2.set_title('probability distribution of mean returns from samples')
-    plt.savefig('results/distribution1_' + top + '.png')
-    plt.show()
+    plt.plot(grid, posterior)
+    plt.title('probability distribution of mean returns')
+    plt.savefig('results/distribution1_prob_' + top + '.png')
+    plt.clf()
 
-    with open(result_md, 'a+') as fd:
-        fd.write('![alt text](distribution1_' + top + '.png)' + '\n')
+    plt.plot(samples, 'o')
+    plt.title('samples of mean returns')
+    plt.savefig('results/distribution1_samples_' + top + '.png')
+    plt.clf()
+
+    sns.kdeplot(samples)
+    plt.title('probability distribution of mean returns from samples')
+    plt.savefig('results/distribution1_kde_' + top + '.png')
+    plt.clf()
 
     with pm.Model() as model:
         mu = pm.Normal('mu', mu=np.mean(means), sd=np.std(means))
@@ -212,15 +218,32 @@ for i in range(MIN_ETFS, MAX_ETFS):
     print('89 percentile:' + str(pm.hpd(samples, alpha=0.89)))
     print('95 percentile:' + str(pm.hpd(samples, alpha=0.95)))
     with open(result_md, 'a+') as fd:
-        fd.write('* 89 percentile:' + str(pm.hpd(samples, alpha=0.89)) + '\n')
-        fd.write('* 95 percentile:' + str(pm.hpd(samples, alpha=0.95)) + '\n')
+        fd.write('* 89 percentile: ' + str(np.round(pm.hpd(samples, alpha=0.89), 2)) + '\n')
+        fd.write('* 95 percentile: ' + str(np.round(pm.hpd(samples, alpha=0.95), 2)) + '\n')
+        fd.write('![alt text](distribution1_prob_' + top + '.png)' + '\n')
+        fd.write('![alt text](distribution1_samples_' + top + '.png)' + '\n')
+        fd.write('![alt text](distribution1_kde_' + top + '.png)' + '\n')
 
-    _, (ax0, ax1) = plt.subplots(1, 2)
-    ax0.plot(means)
-    ax0.set_title('Means of returns gained from Chaos simulation')
-    sns.kdeplot(samples, ax=ax1)
-    ax1.set_title('Distrinution of mean returns from Chaos simulation')
-    plt.savefig('results/distribution2_' + top + '.png')
-    plt.show()
+    plt.plot(means)
+    plt.title('Means of returns gained from Chaos simulation')
+    plt.savefig('results/distribution2_means_' + top + '.png')
+    plt.clf()
+
+    sns.kdeplot(samples)
+    plt.title('Distribution of mean returns from Chaos simulation')
+    plt.savefig('results/distribution2_kde_' + top + '.png')
+    plt.clf()
+
     with open(result_md, 'a+') as fd:
-        fd.write('![alt text](distribution2_' + top + '.png)' + '\n')
+        fd.write('![alt text](distribution2_means_' + top + '.png)' + '\n')
+        fd.write('![alt text](distribution2_kde_' + top + '.png)' + '\n')
+
+    # generate report
+    doc = Document.from_markdown(result_md)
+    doc.save_to_pdf(pdf_file_name='results/' + top + '.pdf')
+    os.remove(result_md)
+
+    # clean up
+    for f in os.listdir('results/'):
+        if f.endswith('.png'):
+            os.remove('results/' + f)
