@@ -9,7 +9,7 @@ import seaborn as sns
 sys.path.insert(0, '../etf_data')
 from etf_data_loader import load_all_data_from_file
 
-sys.path.insert(0, '../buy_hold_simulator')
+sys.path.insert(0, '../buy_hold_simulation')
 from result_loader import load_ranked
 import bah_simulator as bah
 
@@ -20,10 +20,11 @@ from md2pdf.doc import Document
 
 # -----
 
-prefix = 'lse_'
+prefix = ''
 
 start_date = '1993-01-01'
-end_date = '2018-02-09'
+# end_date = '2018-02-09'
+end_date = '2017-12-31'
 
 df_adj_close = load_all_data_from_file(prefix + 'etf_data_adj_close.csv', start_date, end_date)
 
@@ -121,8 +122,8 @@ np.warnings.filterwarnings('ignore')
 data = load_ranked(prefix)
 
 MIN_ETFS = 0
-MAX_ETFS = 5
-MAX_RUNS = 100
+MAX_ETFS = 1
+MAX_RUNS = 10
 
 for i in range(MIN_ETFS, MAX_ETFS):
     top = data['ticket'].iloc[i]
@@ -213,8 +214,18 @@ for i in range(MIN_ETFS, MAX_ETFS):
         mean_q = pm.find_MAP()
         std_mu = ((1 / pm.find_hessian(mean_q, vars=[mu])) ** 0.5)[0]
         std_sigma = ((1 / pm.find_hessian(mean_q, vars=[sigma])) ** 0.5)[0]
+        try:
+            trace_model = pm.sample(1000, tune=1000)
+            trace_df = pm.trace_to_dataframe(trace_model)
+            print(trace_df.corr().round(2))
+        except:
+            print('failed to sample via MCMC simulation')
+    #treba overit variance-covariance maticu na zavislost jednotlivych parametrov
+    #ak budu zavisle, tak mozme pouzit centering - od jedneho z nich odpocitame jeho stred
 
     samples = norm.rvs(loc=mean_q['mu'], scale=mean_q['sigma'], size=10000)
+
+
     print('89 percentile:' + str(pm.hpd(samples, alpha=0.89)))
     print('95 percentile:' + str(pm.hpd(samples, alpha=0.95)))
     with open(result_md, 'a+') as fd:
