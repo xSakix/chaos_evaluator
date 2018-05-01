@@ -11,10 +11,13 @@ def yorke(x, r):
 
 
 class ChaosSim:
-    def __init__(self, ticket, dist=[1.], tr_cost=2.):
+    def __init__(self, ticket, dist=[1.], tr_cost=2.,only_buy=False, sum=300,period=30):
         self.investor = Investor(ticket,dist)
+        self.investor.dca.cash=sum
+        self.investor.dca.period = period
         self.tr_cost = tr_cost
         self.r = np.random.uniform(2.9, 3.9,2)
+        self.only_buy = only_buy
 
     def invest(self, data):
 
@@ -52,7 +55,7 @@ class ChaosSim:
                 self.investor.cash += self.investor.dca.cash
                 self.investor.invested += self.investor.dca.cash
 
-            if x[0] >= 0.9 and sum(self.investor.shares > 0) > 0:
+            if x[0] >= 0.9 and sum(self.investor.shares > 0) > 0 and not self.only_buy:
                 self.investor.cash = np.dot(self.investor.shares, prices) - sum(self.investor.shares > 0) * self.tr_cost
                 self.investor.shares = np.zeros(len(data.keys()))
 

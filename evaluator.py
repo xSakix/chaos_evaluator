@@ -30,6 +30,8 @@ start_date = '1993-01-01'
 end_date = '2017-12-31'
 
 df_adj_close = load_all_data_from_file(prefix + 'etf_data_adj_close.csv', start_date, end_date)
+period = 365
+cash_sum = 300.
 
 
 def gen_random_date(year_low, year_high):
@@ -39,8 +41,8 @@ def gen_random_date(year_low, year_high):
     return datetime(year=y, month=m, day=d)
 
 
-def compute_one_etf(etf):
-    sim = chs.ChaosSim(etf)
+def compute_one_etf(etf,period,cash_sum):
+    sim = chs.ChaosSim(etf, only_buy=True, sum=cash_sum, period=period)
     data = get_data_random_dates()
     sim.invest(data[etf])
 
@@ -75,8 +77,8 @@ def process_bah_investor(investor, etf):
     plt.clf()
 
 
-def compute_bah(etf):
-    dca = bah.DCA(30, 300.)
+def compute_bah(etf,period,cash_sum):
+    dca = bah.DCA(period, cash_sum)
     investor = bah.Investor(etf, [1.0], dca)
     sim = bah.BuyAndHoldInvestmentStrategy(investor, 2.)
     sim.invest(df_adj_close[etf])
@@ -84,10 +86,10 @@ def compute_bah(etf):
     return investor
 
 
-def run_bah_sim(etf):
+def run_bah_sim(etf,period,cash_sum):
     data = get_data_random_dates()
 
-    dca = bah.DCA(30, 300.)
+    dca = bah.DCA(period, cash_sum)
     investor = bah.Investor(etf, [1.0], dca)
     sim = bah.BuyAndHoldInvestmentStrategy(investor, 2.)
     sim.invest(data[etf])
@@ -212,11 +214,11 @@ np.warnings.filterwarnings('ignore')
 
 data = load_ranked(prefix)
 
-MIN_ETFS = 0
-MAX_ETFS = 1
-MAX_RUNS = 10
+MIN_ETFS = 5
+MAX_ETFS = 55
+MAX_RUNS = 1000
 
-result_csv = 'results/result_new.csv'
+result_csv = 'results/result_spy.csv'
 if os.path.isfile(result_csv):
     result_df = pd.read_csv(result_csv)
 else:
@@ -227,45 +229,51 @@ else:
 
 def process_one_etf(top, result_df):
     print(top)
-    bah_investor = compute_bah([top])
+    bah_investor = compute_bah([top],period,cash_sum)
     print('invested:' + str(bah_investor.invested_history[-1]))
     print('value gained:' + str(bah_investor.history[-1]))
     print('returns:' + str(bah_investor.ror_history[-1]))
     investors = []
     while len(investors) < MAX_RUNS:
-        investor = run_bah_sim([top])
+        investor = run_bah_sim([top],period,cash_sum)
+        if len(investor.ror_history) == 0:
+            continue
         investors.append(investor)
-        print('%d:%f:%f' % (len(investors), investor.history[-1], investor.ror_history[-1]))
+        print('%d:%f:%f:%f' % (len(investors), investor.invested, investor.history[-1], investor.ror_history[-1]))
     returns_bah = [investor.ror_history[-1] for investor in investors]
     returns_bah = np.array(returns_bah)
+    # returns_bah = np.sort(returns_bah)
     print('original:%f' % bah_investor.ror_history[-1])
     print('observed:%f +/- %f' % (np.mean(returns_bah), np.std(returns_bah)))
     with pm.Model() as model:
         mu = pm.Normal('mu', mu=np.mean(returns_bah), sd=np.std(returns_bah))
         sigma = pm.Uniform('sigma', lower=0., upper=np.std(returns_bah))
         mean_returns = pm.Normal('mean_returns', mu=mu, sd=sigma, observed=np.array(returns_bah))
-        trace_model = pm.sample(1000, tune=1000)
-    samples_bah = pm.sample_ppc(trace_model, size=100, model=model)
-    hpd89_bah = pm.hpd(samples_bah['mean_returns'], alpha=0.89)
+        trace_model = pm.sample(1000, tune=2000)
+    samples_bah = pm.sample_ppc(trace_model, size=10000, model=model)
+    hpd89_bah = pm.hpd(samples_bah['mean_returns'], alpha=0.11)
     print('mean 89 percentile:' + str(np.mean(hpd89_bah)))
     investors = []
     while len(investors) < MAX_RUNS:
-        investor = compute_one_etf([top])
+        investor = compute_one_etf([top],period,cash_sum)
         if investor.cash == investor.invested:
             continue
+        if len(investor.ror_history) == 0:
+            continue
         investors.append(investor)
-        print('%d:%f:%f' % (len(investors), investor.history[-1], investor.ror_history[-1]))
+        print('%d:%f:%f:%f' % (len(investors), investor.invested, investor.history[-1], investor.ror_history[-1]))
     returns_chaos = [investor.ror_history[-1] for investor in investors]
     returns_chaos = np.array(returns_chaos)
+    # returns_chaos = np.sort(returns_chaos)
     print('original:%f' % (bah_investor.ror_history[-1]))
     print('observed:%f +/- %f' % (np.mean(returns_chaos), np.std(returns_chaos)))
     with pm.Model() as model:
         mu = pm.Normal('mu', mu=np.mean(returns_chaos), sd=np.std(returns_chaos))
         sigma = pm.Uniform('sigma', lower=0., upper=np.std(returns_chaos))
         mean_returns = pm.Normal('mean_returns', mu=mu, sd=sigma, observed=np.array(returns_chaos))
-        trace_model = pm.sample(1000, tune=1000)
-    samples_chaos = pm.sample_ppc(trace_model, size=100, model=model)
-    hpd89_chaos = pm.hpd(samples_chaos['mean_returns'], alpha=0.89)
+        trace_model = pm.sample(1000, tune=2000)
+    samples_chaos = pm.sample_ppc(trace_model, size=10000, model=model)
+    hpd89_chaos = pm.hpd(samples_chaos['mean_returns'], alpha=0.11)
     print('mean 89 percentile:' + str(np.mean(hpd89_chaos)))
     validity_chaos = np.count_nonzero(np.abs(returns_chaos - bah_investor.ror_history[-1]) < 0.05) / len(
         returns_chaos) * 100.
@@ -290,9 +298,10 @@ def process_one_etf(top, result_df):
     return result_df
 
 
-for i in range(MIN_ETFS, MAX_ETFS):
-    top = data['ticket'].iloc[i]
-    # top = 'XLK'
+# for i in range(MIN_ETFS, MAX_ETFS):
+for i in range(0, 10):
+    # top = data['ticket'].iloc[i]
+    top = 'SPY'
     try:
         result_df = process_one_etf(top, result_df)
     except Exception as e:
